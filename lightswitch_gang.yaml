@@ -1,0 +1,208 @@
+esphome:
+  name: lightswitch_gang
+  platform: ESP8266
+  board: d1_mini
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Lightswitch Gang"
+    password: "VbudZoqZp5ua"
+
+captive_portal:
+
+
+status_led:
+  pin:
+    number: D4
+    inverted: True
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  services:
+    - service: control_gang_on
+      variables:
+        level: float
+      then:
+        - servo.write:
+            id: gang_on
+            level: !lambda 'return level / 100.0;'
+    - service: control_gang_off
+      variables:
+        level: float
+      then:
+        - servo.write:
+            id: gang_off
+            level: !lambda 'return level / 100.0;'
+    - service: control_soverom_on
+      variables:
+        level: float
+      then:
+        - servo.write:
+            id: soverom_on
+            level: !lambda 'return level / 100.0;'
+    - service: control_soverom_off
+      variables:
+        level: float
+      then:
+        - servo.write:
+            id: soverom_off
+            level: !lambda 'return level / 100.0;'
+
+ota:
+
+web_server:
+  port: 80
+
+globals: #Global variable, see on_turn_on in lights for further explaination
+  - id: is_last_gang_lys_state_on
+    type: bool
+    restore_value: "yes"
+    initial_value: "false"
+  - id: is_last_soverom_lys_state_on
+    type: bool
+    restore_value: "yes"
+    initial_value: "false"
+
+
+light: 
+  - platform: binary
+    name: "Gang taklys"
+    id: gang_taklys
+    output: mock #Output is required, this output is not used
+    on_turn_on:
+      then:
+        - if: #Ensures that the lights havent been turned off already. Prevents scenes/automations from triggering servo when lights are already turned on
+            condition: #Need to use global variable since on_turn_on changes the state before this code will run
+              lambda: |-
+                if(!id(is_last_gang_lys_state_on)) {
+                  id(is_last_gang_lys_state_on) = true;
+                  return true;
+                }
+                return false;
+            then:
+              - script.stop: turn_on_power_supply_pin_for_short_duration #Stop is used to cancel any possible running scripts, which could cause the power pin to shut of prematurely
+              - script.execute: turn_on_power_supply_pin_for_short_duration
+              - logger.log: "Light is being turned on"
+              - servo.write:
+                  id: gang_on
+                  level: 45%
+              - delay: 500ms
+              - servo.write:
+                  id: gang_on
+                  level: -100%
+    on_turn_off:
+      then:
+        - if: 
+            condition: #See turn on for explaination
+              lambda: |-
+                if(id(is_last_gang_lys_state_on)) {
+                  id(is_last_gang_lys_state_on) = false;
+                  return true;
+                }
+                return false;
+            then:
+              - script.stop: turn_on_power_supply_pin_for_short_duration
+              - script.execute: turn_on_power_supply_pin_for_short_duration
+              - logger.log: "Light is being turned off"
+              - servo.write:
+                  id: gang_off
+                  level: -44%
+              - delay: 500ms
+              - servo.write:
+                  id: gang_off
+                  level: 100%
+  - platform: binary
+    name: "Soverom taklys"
+    id: soverom_taklys
+    output: mock #Output is required, this output is not used
+    on_turn_on:
+      then:
+        - if: #Ensures that the lights havent been turned off already. Prevents scenes/automations from triggering servo when lights are already turned on
+            condition: #Need to use global variable since on_turn_on changes the state before this code will run
+              lambda: |-
+                if(!id(is_last_soverom_lys_state_on)) {
+                  id(is_last_soverom_lys_state_on) = true;
+                  return true;
+                }
+                return false;
+            then:
+              - script.stop: turn_on_power_supply_pin_for_short_duration
+              - script.execute: turn_on_power_supply_pin_for_short_duration
+              - logger.log: "Light is being turned on"
+              - servo.write:
+                  id: soverom_on
+                  level: -44%
+              - delay: 500ms
+              - servo.write:
+                  id: soverom_on
+                  level: 100%
+    on_turn_off:
+      then:
+        - if: 
+            condition: #See turn on for explaination
+              lambda: |-
+                if(id(is_last_soverom_lys_state_on)) {
+                  id(is_last_soverom_lys_state_on) = false;
+                  return true;
+                }
+                return false;
+            then:
+              - script.stop: turn_on_power_supply_pin_for_short_duration
+              - script.execute: turn_on_power_supply_pin_for_short_duration
+              - logger.log: "Light is being turned off"
+              - servo.write:
+                  id: soverom_off
+                  level: 45%
+              - delay: 500ms
+              - servo.write:
+                  id: soverom_off
+                  level: -100%
+
+script:
+  - id: turn_on_power_supply_pin_for_short_duration
+    then:
+      - output.turn_on: power_supply_pin
+      - delay: 1200ms
+      - output.turn_off: power_supply_pin
+
+servo:
+  - id: gang_on
+    output: pwm_gang_on
+  - id: gang_off
+    output: pwm_gang_off
+  - id: soverom_on
+    output: pwm_soverom_on
+  - id: soverom_off
+    output: pwm_soverom_off
+
+
+output:
+  - platform: esp8266_pwm
+    id: pwm_gang_on
+    pin: D5 #Be careful when using other pins, some will make the ESP fail to boot.
+    frequency: 50 Hz
+  - platform: esp8266_pwm
+    id: pwm_gang_off
+    pin: D6
+    frequency: 50 Hz
+  - platform: esp8266_pwm
+    id: pwm_soverom_on
+    pin: D7
+    frequency: 50 Hz
+  - platform: esp8266_pwm
+    id: pwm_soverom_off
+    pin: D2
+    frequency: 50 Hz
+  - platform: gpio
+    id: mock
+    pin: D3
+  - platform: gpio
+    id: power_supply_pin
+    pin: D1 #Not all pins work for this, using D3 causes the pin to turn on during boot. D2 should also work 
+ 
